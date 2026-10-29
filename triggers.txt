@@ -1,0 +1,161 @@
+-- =========================================
+-- 1. ACCOUNTS AND TRANSACTIONS
+-- =========================================
+
+CREATE TABLE Accounts (
+    account_number INT PRIMARY KEY,
+    balance DECIMAL(10,2)
+);
+
+CREATE TABLE Transactions (
+    transaction_id INT AUTO_INCREMENT PRIMARY KEY,
+    account_number INT,
+    transaction_type VARCHAR(10),
+    amount DECIMAL(10,2),
+    transaction_date TIMESTAMP,
+    FOREIGN KEY (account_number)
+        REFERENCES Accounts(account_number)
+);
+
+DELIMITER //
+
+CREATE TRIGGER after_account_update
+AFTER UPDATE ON Accounts
+FOR EACH ROW
+BEGIN
+    IF NEW.balance > OLD.balance THEN
+        INSERT INTO Transactions
+            (account_number, transaction_type, amount, transaction_date)
+        VALUES
+            (NEW.account_number, 'CREDIT',
+             ABS(NEW.balance - OLD.balance), CURRENT_TIMESTAMP);
+
+    ELSEIF NEW.balance < OLD.balance THEN
+        INSERT INTO Transactions
+            (account_number, transaction_type, amount, transaction_date)
+        VALUES
+            (NEW.account_number, 'DEBIT',
+             ABS(NEW.balance - OLD.balance), CURRENT_TIMESTAMP);
+    END IF;
+END //
+
+DELIMITER ;
+
+
+-- =========================================
+-- 2. PRODUCTS AND SALES
+-- =========================================
+
+CREATE TABLE Products (
+    product_id INT PRIMARY KEY,
+    name VARCHAR(100),
+    stock_quantity INT
+);
+
+CREATE TABLE Sales (
+    sale_id INT PRIMARY KEY,
+    product_id INT,
+    quantity_sold INT,
+    sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id)
+        REFERENCES Products(product_id)
+);
+
+DELIMITER //
+
+CREATE TRIGGER after_sales_insert
+AFTER INSERT ON Sales
+FOR EACH ROW
+BEGIN
+    UPDATE Products
+    SET stock_quantity = stock_quantity - NEW.quantity_sold
+    WHERE product_id = NEW.product_id;
+END //
+
+DELIMITER ;
+
+
+-- =========================================
+-- 3. EMPLOYEES SALARY VALIDATION
+-- =========================================
+
+CREATE TABLE Departments (
+    dept_id INT PRIMARY KEY,
+    name VARCHAR(100),
+    employee_count INT DEFAULT 0
+);
+
+CREATE TABLE Employees (
+    emp_id INT PRIMARY KEY,
+    name VARCHAR(100),
+    salary DECIMAL(10,2),
+    dept_id INT,
+    FOREIGN KEY (dept_id)
+        REFERENCES Departments(dept_id)
+);
+
+DELIMITER //
+
+CREATE TRIGGER before_employee_update
+BEFORE UPDATE ON Employees
+FOR EACH ROW
+BEGIN
+    IF NEW.salary <= 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: Salary must be greater than zero';
+    END IF;
+END //
+
+DELIMITER ;
+
+
+-- =========================================
+-- 4. STUDENTS MARKS VALIDATION
+-- =========================================
+
+CREATE TABLE Students (
+    student_id INT PRIMARY KEY,
+    name VARCHAR(100),
+    marks DECIMAL(5,2)
+);
+
+DELIMITER //
+
+CREATE TRIGGER before_student_insert
+BEFORE INSERT ON Students
+FOR EACH ROW
+BEGIN
+    IF NEW.marks < 0 OR NEW.marks > 100 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: Marks must be between 0 and 100';
+    END IF;
+END //
+
+DELIMITER ;
+
+
+-- =========================================
+-- 5. DEPARTMENT EMPLOYEE COUNT TRIGGERS
+-- =========================================
+
+DELIMITER //
+
+CREATE TRIGGER after_employee_insert
+AFTER INSERT ON Employees
+FOR EACH ROW
+BEGIN
+    UPDATE Departments
+    SET employee_count = employee_count + 1
+    WHERE dept_id = NEW.dept_id;
+END //
+
+CREATE TRIGGER after_employee_delete
+AFTER DELETE ON Employees
+FOR EACH ROW
+BEGIN
+    UPDATE Departments
+    SET employee_count = employee_count - 1
+    WHERE dept_id = OLD.dept_id;
+END //
+
+DELIMITER ;
